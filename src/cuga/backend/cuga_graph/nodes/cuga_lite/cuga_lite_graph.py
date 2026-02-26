@@ -329,6 +329,7 @@ async def create_find_tools_tool(
     all_tools: Sequence[StructuredTool],
     all_apps: List[Any],
     app_to_tools_map: Optional[Dict[str, List[StructuredTool]]] = None,
+    filter_criteria: Optional[Dict[str, Any]] = None,
 ) -> StructuredTool:
     """Create a find_tools StructuredTool for tool discovery.
 
@@ -336,6 +337,7 @@ async def create_find_tools_tool(
         all_tools: All available tools to search through
         all_apps: All available app definitions
         app_to_tools_map: Optional mapping of app_name -> list of tools. If provided, used for filtering by app_name.
+        filter_criteria: Optional dictionary of metadata filters to apply to tools (e.g., {"domain": "hockey"})
 
     Returns:
         StructuredTool configured for finding relevant tools
@@ -358,6 +360,29 @@ async def create_find_tools_tool(
                 f"App '{app_name}' not found in app_to_tools_map. Available apps: {list(app_to_tools_map.keys()) if app_to_tools_map else 'N/A'}"
             )
             filtered_tools = []
+
+        # Apply filter criteria if specified
+        if filter_criteria and filtered_tools:
+            criteria_filtered_tools = []
+            for tool in filtered_tools:
+                if hasattr(tool, 'metadata') and tool.metadata:
+                    # Check if all filter criteria match
+                    matches_all = all(
+                        tool.metadata.get(key) == value
+                        for key, value in filter_criteria.items()
+                    )
+                    if matches_all:
+                        criteria_filtered_tools.append(tool)
+            
+            if criteria_filtered_tools:
+                filtered_tools = criteria_filtered_tools
+                criteria_str = ", ".join(f"{k}='{v}'" for k, v in filter_criteria.items())
+                logger.info(f"Filtered {len(filtered_tools)} tools matching criteria: {criteria_str}")
+            else:
+                criteria_str = ", ".join(f"{k}='{v}'" for k, v in filter_criteria.items())
+                logger.warning(
+                    f"No tools found matching criteria ({criteria_str}) in app '{app_name}'. Using all {len(filtered_tools)} tools from app."
+                )
 
         filtered_apps = [app for app in all_apps if hasattr(app, 'name') and app.name == app_name]
 
@@ -453,6 +478,7 @@ def create_cuga_lite_graph(
     thread_id: Optional[str] = None,
     callbacks: Optional[List[BaseCallbackHandler]] = None,
     special_instructions: Optional[str] = None,
+    filter_criteria: Optional[Dict[str, Any]] = None,
 ) -> StateGraph:
     """
     Create a unified CugaLite subgraph combining CodeAct and CugaAgent functionality.
@@ -487,6 +513,7 @@ def create_cuga_lite_graph(
         base_instructions,
         tools_context_dict,
         base_special_instructions,
+        base_filter_criteria,
     ):
         """Factory to create prepare node with closure over tool provider and config."""
 
@@ -605,7 +632,7 @@ def create_cuga_lite_graph(
             tools_for_prompt = tools_for_execution
             if enable_find_tools:
                 find_tool = await create_find_tools_tool(
-                    all_tools=tools_for_execution, all_apps=apps_for_prompt, app_to_tools_map=app_to_tools_map
+                    all_tools=tools_for_execution, all_apps=apps_for_prompt, app_to_tools_map=app_to_tools_map, filter_criteria=base_filter_criteria
                 )
                 tools_for_prompt = [find_tool]
                 # Add find_tools to tools context for sandbox execution
@@ -1106,7 +1133,7 @@ def create_cuga_lite_graph(
 
     # Create node instances using factories
     prepare_node = create_prepare_node(
-        tool_provider, prompt_template, instructions, tools_context, special_instructions
+        tool_provider, prompt_template, instructions, tools_context, special_instructions, filter_criteria
     )
     call_model_node = create_call_model_node(model, callbacks)
     sandbox_node = create_sandbox_node(tools_context, thread_id, apps_list)

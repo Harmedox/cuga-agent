@@ -1205,6 +1205,7 @@ class CugaAgent:
         auto_load_policies: Optional[bool] = None,
         reset_policy_storage: bool = False,
         filesystem_sync: Optional[bool] = None,
+        filter_criteria: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the CUGA Agent.
@@ -1220,6 +1221,7 @@ class CugaAgent:
             auto_load_policies: If True, automatically loads policies from cuga_folder
             reset_policy_storage: If True, clears all existing policies from storage on init
             filesystem_sync: If True, saves policies to .cuga when added/updated (default: True)
+            filter_criteria: Optional dictionary of metadata criteria to filter tools (e.g., {"domain": "sports"})
 
         Example with tool approval policy:
             ```python
@@ -1252,6 +1254,7 @@ class CugaAgent:
         self._compiled_graph = None
         self._policy_system = policy_system
         self._special_instructions = special_instructions
+        self._filter_criteria = filter_criteria
 
         # Use settings defaults if not provided
         self.cuga_folder = cuga_folder if cuga_folder is not None else settings.policy.cuga_folder
@@ -1357,6 +1360,7 @@ class CugaAgent:
             thread_id=thread_id,
             callbacks=self._callbacks,
             special_instructions=self._special_instructions,
+            filter_criteria=self._filter_criteria,
         )
         # Compile subgraph without checkpointer so it streams internal updates
         compiled_subgraph = cuga_lite_subgraph.compile()
