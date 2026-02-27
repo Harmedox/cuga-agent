@@ -8,6 +8,7 @@
  */
 
 import type { ChatInstance } from "@carbon/ai-chat";
+import { generateUUID } from './CarbonChat';
 import {
   MessageResponseTypes,
   ReasoningStepOpenState,
@@ -252,7 +253,7 @@ export async function runReasoningStepsScenario(
   instance: ChatInstance,
   signal?: AbortSignal,
 ) {
-  const responseID = crypto.randomUUID();
+  const responseID = generateUUID();
   const collectedSteps: ReasoningStep[] = [];
 
   createShellMessage(instance, responseID, { reasoning: { steps: [] } });
@@ -279,7 +280,7 @@ export async function runControlledReasoningScenario(
   instance: ChatInstance,
   signal?: AbortSignal,
 ) {
-  const responseID = crypto.randomUUID();
+  const responseID = generateUUID();
 
   const collectedSteps: ReasoningStep[] = [];
 
@@ -318,7 +319,7 @@ export async function runReasoningContentScenario(
   instance: ChatInstance,
   signal?: AbortSignal,
 ) {
-  const responseID = crypto.randomUUID();
+  const responseID = generateUUID();
 
   createShellMessage(instance, responseID, { reasoning: { content: "" } });
 
@@ -347,7 +348,7 @@ export async function runChainOfThoughtScenario(
   instance: ChatInstance,
   signal?: AbortSignal,
 ) {
-  const responseID = crypto.randomUUID();
+  const responseID = generateUUID();
   createShellMessage(instance, responseID, { chain_of_thought: [] });
 
   await streamText(

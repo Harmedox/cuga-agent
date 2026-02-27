@@ -22,6 +22,16 @@ import { customLoadHistory } from './customLoadHistory';
 import './CarbonChat.css';
 
 // Reset thread ID when conversation restarts
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 let currentThreadId: string | null = null;
 
 function resetThreadId() {
@@ -30,7 +40,7 @@ function resetThreadId() {
 
 export function getOrCreateThreadId(): string {
   if (!currentThreadId) {
-    currentThreadId = crypto.randomUUID();
+    currentThreadId = generateUUID();
   }
   return currentThreadId;
 }
@@ -349,6 +359,7 @@ const CarbonChat = ({
         customSendMessage: handleCustomSendMessage,
         customLoadHistory: handleCustomLoadHistory,
       }}
+      onError={(data: any) => console.error('[CarbonChat] onError:', data)}
       onAfterRender={handleChatReady}
       />
     </>

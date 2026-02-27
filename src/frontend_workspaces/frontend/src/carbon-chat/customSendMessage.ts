@@ -29,7 +29,7 @@ import {
 import * as api from "../api";
 
 // Import thread ID management from CarbonChat
-import { getOrCreateThreadId } from './CarbonChat';
+import { getOrCreateThreadId, generateUUID } from './CarbonChat';
 
 export async function stopCugaAgent(threadId: string) {
   try {
@@ -122,7 +122,7 @@ export async function customSendMessage(
   }
 
   const threadId = getOrCreateThreadId();
-  const responseID = crypto.randomUUID();
+  const responseID = generateUUID();
   
   // Listen for abort signal to call /stop endpoint
   const abortHandler = () => {

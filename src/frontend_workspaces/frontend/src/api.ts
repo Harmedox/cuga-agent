@@ -90,7 +90,7 @@ export async function postStream(
   };
   if (options.useDraft) headers["X-Use-Draft"] = "true";
   if (options.disableHistory) headers["X-Disable-History"] = "true";
-  return apiFetch(`${base}/stream`, {
+  return apiFetch(`/stream`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
