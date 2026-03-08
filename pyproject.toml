@@ -58,6 +58,11 @@ Repository = "https://github.com/cuga-project/cuga-agent"
 
 [tool.uv]
 package = true
+constraint-dependencies = [
+    "pillow>=12.1.1",  # CVE-2026-25990: Out-of-bounds write in PSD loading
+    "urllib3>=2.6.3",  # CVE-2025-66418, CVE-2025-66471, CVE-2025-50181, CVE-2025-50182, CVE-2026-21441
+    "setuptools<70",   # milvus-lite requires pkg_resources (removed in setuptools 70+)
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -110,7 +115,7 @@ dev = [
     "ruff>=0.9.4",
     "tabulate",
     "beartype",
-    "nltk",
+    "nltk>=3.9.3",
     "termcolor",
     "rapidfuzz",
     "pytest>=8.3.5",
