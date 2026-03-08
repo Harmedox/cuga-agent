@@ -17,6 +17,15 @@ from pydantic import BaseModel, ValidationError
 from fastapi import Depends, FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+# Import openlit_init BEFORE any other Cuga imports.
+# This triggers process-level initialization of OpenLit observability (if enabled).
+# The module sets OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES at import time,
+# ensuring whichever library creates the OTel TracerProvider first (e.g. Langfuse)
+# picks up the correct resource attributes (agent.id, service.version, etc.).
+# The module also calls init_openlit() at import time to set up instrumentation.
+import cuga.backend.observability.openlit_init as _openlit_init  # noqa: F401
+
 from langchain_core.messages import AIMessage, HumanMessage
 from loguru import logger
 
