@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from cuga.backend.server.auth import require_auth
+from cuga.backend.server.auth import require_manage_access
 
 router = APIRouter(
     prefix="/api/manage",
     tags=["manage"],
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_manage_access)],
 )
 
 
