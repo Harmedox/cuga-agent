@@ -61,6 +61,11 @@ def _get_digital_sales_tool() -> dict[str, Any]:
     }
 
 
+HEALTH_USER_CONTEXT = """Member ID (string): 121231234
+Location: latitude(str):40.7128, longitude(str):-74.0060
+Current Date: 2025-12-31"""
+
+
 def _get_oak_health_tool() -> dict[str, Any]:
     port = int(
         os.environ.get(
@@ -337,7 +342,7 @@ def setup_demo_manage_config(
         "Show me the OpenShift container platform installation guide.",
     ]
     DEMO_HEALTH_STARTERS = [
-        "Show my last approved claims and share the URL of any EOB PDF (member 121231234)",
+        "Show my last approved claims and share the URL of any EOB PDF",
         "Find in-network primary care doctors near me that accept new patients",
         "Find knee surgeons nearby and what are my benefits for surgery",
         "What is my deductible and out-of-pocket progress this plan year?",
