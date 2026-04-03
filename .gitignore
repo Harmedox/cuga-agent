@@ -82,5 +82,9 @@ deployment/helm/openshift.env
 deployment/helm/*.env
 !deployment/helm/openshift.example.env
 
+# Examples that use repo-root uv.lock only (see CONTRIBUTING.md)
+docs/examples/cuga_as_mcp/uv.lock
+docs/examples/cuga_with_runtime_tools/uv.lock
+
 # Registry credentials (copy from registry.example.env)
 scripts/registry.env
