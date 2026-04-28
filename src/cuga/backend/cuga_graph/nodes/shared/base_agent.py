@@ -155,6 +155,23 @@ JSON schema:
                 schema = APIPlannerOutputWX
             parser = PydanticOutputParser(pydantic_object=schema)
             if wx_json_mode == "response_format":
+                # vLLM's xgrammar guided decoding fails to compile an FSM for
+                # schemas with $defs/$ref (vllm#21148), returning empty content
+                # (completion_tokens~=2, finish_reason=stop). Only apply the
+                # prompt-based fallback when the schema actually has that shape;
+                # flat schemas (e.g. PlanControllerOutput, NextAgentPlan) keep
+                # working under guided decoding and are left on the existing
+                # with_structured_output path.
+                if "$defs" in schema.model_json_schema():
+                    logger.debug(
+                        "Schema has $defs/$ref; trying guided decoding first, "
+                        "falling back to prompt-based parsing on failure"
+                    )
+                    guided_chain = BaseAgent.create_validated_structured_output_chain(
+                        llm, schema, prompt_template
+                    )
+                    fallback_chain = (prompt_template | llm | parser).with_retry(stop_after_attempt=3)
+                    return guided_chain.with_fallbacks([fallback_chain])
                 return BaseAgent.create_validated_structured_output_chain(llm, schema, prompt_template)
             elif wx_json_mode == "function_calling" or wx_json_mode == "json_mode":
                 chain = prompt_template | llm.with_structured_output(schema, method=wx_json_mode)
