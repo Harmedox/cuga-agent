@@ -622,6 +622,7 @@ def callback(
     - demo_skills: Like demo; enables skills + shell tools; exits if OpenSandbox is unreachable
     - demo_crm: CRM demo with email MCP, mail sink, and CRM API (runs directly)
     - demo_supervisor: Same as demo_crm but with CugaSupervisor multi-agent coordination
+    - travel_agent: Corporate travel planning demo with multi-agent supervisor
     - demo_health: Healthcare insurance demo (cuga-oak-health OpenAPI + manage UI)
     - registry: The MCP registry service only (runs directly)
     - appworld: AppWorld environment and API servers (runs directly)
@@ -630,6 +631,7 @@ def callback(
       cuga start demo_skills    # Skills + OpenSandbox shell tools; stops if sandbox server is unreachable
       cuga start demo_crm       # Start CRM demo with all required services
       cuga start demo_supervisor # Start CRM demo with supervisor multi-agent mode
+      cuga start travel_agent   # Start Travel Agent demo (flights, hotels, compliance, approval)
       cuga start registry       # Start registry only
       cuga start appworld       # Start AppWorld servers
     """
@@ -813,6 +815,7 @@ def validate_service(service: str):
         "demo_health",
         "demo_knowledge",
         "demo_supervisor",
+        "travel_agent",
         "manager",
         "registry",
         "appworld",
@@ -1368,6 +1371,149 @@ def start(
         )
         return
 
+    elif service == "travel_agent":
+        try:
+            # Enable supervisor mode with travel agent configuration
+            os.environ["DYNACONF_SUPERVISOR__ENABLED"] = "true"
+            _cli_dir = Path(__file__).resolve().parent
+            supervisor_config_path = str(
+                _cli_dir.joinpath(
+                    "..",
+                    "..",
+                    "..",
+                    "docs",
+                    "examples",
+                    "travel_agent",
+                    "config",
+                    "supervisor_travel_agent.yaml",
+                ).resolve()
+            )
+
+            if not os.path.exists(supervisor_config_path):
+                logger.error(f"Travel Agent config not found: {supervisor_config_path}")
+                logger.error(
+                    "Please ensure docs/examples/travel_agent/config/supervisor_travel_agent.yaml exists"
+                )
+                raise typer.Exit(1)
+
+            os.environ["DYNACONF_SUPERVISOR__CONFIG_PATH"] = supervisor_config_path
+
+            # Load the travel agent's own .env file (SERPAPI_API_KEY, SLACK_BOT_TOKEN, etc.)
+            # Use dotenv_values to read without affecting the current process, then set
+            # each value explicitly in os.environ so the subprocess inherits them.
+            from dotenv import dotenv_values
+
+            travel_agent_env_path = str(
+                _cli_dir.joinpath("..", "..", "..", "docs", "examples", "travel_agent", ".env").resolve()
+            )
+            if os.path.exists(travel_agent_env_path):
+                travel_agent_env = dotenv_values(travel_agent_env_path)
+                for key, value in travel_agent_env.items():
+                    if value is not None:
+                        os.environ[key] = value
+                logger.info(f"✅ Loaded travel agent env from {travel_agent_env_path}")
+            else:
+                logger.warning(
+                    f"Travel agent .env not found at {travel_agent_env_path}. "
+                    "Copy .env.example to .env and fill in SERPAPI_API_KEY etc."
+                )
+
+            # CRITICAL: Reload settings after setting supervisor environment variables
+            # so the backend server picks up the new DYNACONF_SUPERVISOR__* values.
+            settings.reload()
+            logger.info(f"✈️  Travel Agent supervisor enabled with config: {supervisor_config_path}")
+            logger.info(f"   Supervisor enabled: {settings.supervisor.enabled}")
+            logger.info(f"   Supervisor config path: {settings.supervisor.config_path}")
+
+            # Reset config database and set Travel Agent configuration
+            os.environ["CUGA_MANAGER_MODE"] = "true"
+            os.environ["DYNACONF_POLICY__FILESYSTEM_SYNC"] = "false"
+            os.environ["MCP_SERVERS_FILE"] = "none"
+
+            # Set agent name BEFORE setup so it gets saved to database
+            os.environ["CUGA_AGENT_NAME"] = "Travel Agent"
+            os.environ["CUGA_AGENT_DESCRIPTION"] = "AI-powered corporate travel planning system"
+
+            from cuga.backend.server.config_store import reset_config_db, save_draft
+            import asyncio
+
+            ensure_managed_mcp_file_exists(get_managed_mcp_path())
+            logger.info("🧹 Resetting config db for Travel Agent...")
+
+            reset_config_db()
+
+            # Build LLM config from environment (same as setup_demo_manage_config does)
+            llm_api_key_ref = ""
+            try:
+                from cuga.backend.secrets.seed import resolve_llm_api_key_ref
+
+                llm_api_key_ref = resolve_llm_api_key_ref()
+            except Exception:
+                pass
+
+            llm_cfg = {"model": os.environ.get("MODEL_NAME", "")}
+            if llm_api_key_ref:
+                llm_cfg["api_key"] = llm_api_key_ref
+
+            travel_agent_config = {
+                "agent": {
+                    "name": "Travel Agent",
+                    "description": "AI-powered corporate travel planning system",
+                },
+                "tools": [],
+                "llm": llm_cfg,
+            }
+            asyncio.run(save_draft(travel_agent_config, "cuga-default"))
+            logger.info(
+                "✅ Travel Agent configuration saved (model: %s)", llm_cfg.get("model") or "(default)"
+            )
+
+            app_mgr = _make_app_manager()
+            logger.info("🧹 Checking for existing processes on required ports...")
+            kill_processes_by_port([app_mgr.registry_port, settings.server_ports.demo])
+
+            os.environ["CUGA_HOST"] = host
+            if sandbox:
+                logger.info("Starting Travel Agent with remote sandbox mode enabled")
+                os.environ["DYNACONF_FEATURES__LOCAL_SANDBOX"] = "false"
+
+            registry_process = app_mgr.start_registry(host)
+            if registry_process is None or registry_process.poll() is not None:
+                logger.error("Registry service failed to start. Exiting.")
+                stop_direct_processes()
+                raise typer.Exit(1)
+
+            demo_process = app_mgr.start_demo(host, sandbox=sandbox)
+            if demo_process is None or demo_process.poll() is not None:
+                logger.error("Demo service failed to start. Exiting.")
+                stop_direct_processes()
+                raise typer.Exit(1)
+
+            if direct_processes:
+                table = Table(show_header=False, box=None, padding=(0, 1))
+                table.add_column("Service", style="bold white")
+                table.add_column("URL", style="cyan")
+                table.add_row("Registry:", f"http://localhost:{app_mgr.registry_port}")
+                table.add_row("Demo:", f"http://localhost:{settings.server_ports.demo}")
+
+                console.print()
+                console.print(
+                    Panel(
+                        table,
+                        title="[bold yellow]✅ Travel Agent is running. Press Ctrl+C to stop[/bold yellow]",
+                        border_style="cyan",
+                        padding=(1, 2),
+                        expand=False,
+                    )
+                )
+                wait_for_direct_processes()
+
+        except Exception as e:
+            logger.error(f"Error starting Travel Agent: {e}")
+            stop_direct_processes()
+            raise typer.Exit(1)
+        return
+
     elif service == "registry":
         try:
             logger.info("🧹 Checking for existing processes on required ports...")
@@ -1429,7 +1575,7 @@ def manage_service(action: str, service: str):
     validate_service(service)
 
     if action == "stop":
-        if service in ("demo", "demo_skills", "manager"):
+        if service in ("demo", "demo_skills", "manager", "travel_agent"):
             stopped_any = False
             for service_name in ["oak-health", "docs-mcp", "filesystem-server", "registry", "demo"]:
                 if service_name in direct_processes:
@@ -1440,7 +1586,8 @@ def manage_service(action: str, service: str):
                         stopped_any = True
                     del direct_processes[service_name]
             if not stopped_any:
-                logger.info("Demo/manager services are not running")
+                service_label = "Travel Agent" if service == "travel_agent" else "Demo/manager"
+                logger.info(f"{service_label} services are not running")
         elif service in ("demo_crm", "demo_supervisor"):
             # Stop all CRM/supervisor demo services
             stopped_any = False
@@ -1533,7 +1680,7 @@ def manage_service(action: str, service: str):
 def stop(
     service: str = typer.Argument(
         ...,
-        help="Service to stop: demo, demo_crm, demo_docs, demo_health, demo_knowledge, demo_supervisor, registry, or appworld",
+        help="Service to stop: demo, demo_crm, demo_docs, demo_health, demo_knowledge, demo_supervisor, travel_agent, registry, or appworld",
     ),
 ):
     """
@@ -1547,6 +1694,7 @@ def stop(
       - demo_health: Stops oak-health API, registry, and demo (and filesystem MCP if started with --filesystem)
       - demo_knowledge: Stops registry and demo (and filesystem MCP if started with --filesystem)
       - demo_supervisor: Same as demo_crm
+      - travel_agent: Stops Travel Agent demo services (registry, demo)
       - registry: Stops only the registry service (direct process)
       - appworld: Stops both AppWorld environment and API servers (direct processes)
     Examples:
@@ -1554,6 +1702,7 @@ def stop(
       cuga stop demo_crm         # Stop all CRM demo services
       cuga stop demo_knowledge   # Stop knowledge demo services
       cuga stop demo_supervisor  # Stop all supervisor demo services
+      cuga stop travel_agent     # Stop Travel Agent demo services
       cuga stop registry         # Stop only the registry service
       cuga stop appworld         # Stop AppWorld servers
     """
@@ -1589,7 +1738,7 @@ def viz():
 def status(
     service: str = typer.Argument(
         "all",
-        help="Service to check status: demo, demo_crm, demo_docs, demo_health, demo_supervisor, registry, appworld, or all",
+        help="Service to check status: demo, demo_crm, demo_docs, demo_health, demo_supervisor, travel_agent, registry, appworld, or all",
     ),
 ):
     """
@@ -1602,6 +1751,7 @@ def status(
       - demo_docs: Shows docs MCP, registry, and demo
       - demo_health: Shows oak-health API, registry, and demo (and filesystem MCP if used)
       - demo_supervisor: Same as demo_crm
+      - travel_agent: Shows status of Travel Agent demo services (registry, demo)
       - registry: Shows status of registry service only (direct process)
       - appworld: Shows status of both AppWorld environment and API servers (direct processes)
       - all: Shows status of all services (default)
@@ -1610,10 +1760,11 @@ def status(
       cuga status              # Show status of all services
       cuga status demo         # Show status of demo services (registry + demo)
       cuga status demo_crm     # Show status of CRM demo services
+      cuga status travel_agent # Show status of Travel Agent demo services
       cuga status registry     # Show status of registry only
       cuga status appworld     # Show status of AppWorld servers
     """
-    if service in ("demo", "demo_skills", "manager"):
+    if service in ("demo", "demo_skills", "manager", "travel_agent"):
         for service_name in ["registry", "demo"]:
             if service_name in direct_processes:
                 process = direct_processes[service_name]
@@ -1623,6 +1774,8 @@ def status(
                     logger.info(f"{service_name.capitalize()} service: Terminated")
             else:
                 logger.info(f"{service_name.capitalize()} service: Not running")
+        if service == "travel_agent":
+            logger.info("Travel Agent uses registry + demo services")
         return
 
     elif service == "demo_docs":
