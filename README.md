@@ -271,8 +271,8 @@ CUGA supports multiple LLM providers with flexible configuration options. You ca
 **Setup Instructions:**
 
 1. Access [IBM WatsonX](https://www.ibm.com/watsonx)
-2. Create a project and get your credentials:
-   - Project ID
+2. Create a project or space and get your credentials:
+   - Project ID or Space ID
    - API Key
    - Region/URL
 3. Add to your `.env` file:
@@ -281,6 +281,7 @@ CUGA supports multiple LLM providers with flexible configuration options. You ca
    # WatsonX Configuration
    WATSONX_API_KEY=your-watsonx-api-key
    WATSONX_PROJECT_ID=your-project-id
+   # WATSONX_SPACE_ID=your-space-id  # Alternative to WATSONX_PROJECT_ID
    WATSONX_URL=https://us-south.ml.cloud.ibm.com  # or your region
    AGENT_SETTING_CONFIG="settings.watsonx.toml"
 
